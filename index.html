@@ -1,404 +1,394 @@
-import sys, uuid, json, os, urllib.request
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import Qt, QDateTime, QTime, QThread, pyqtSignal, QTimer 
-from PyQt5.QtGui import QFont, QCursor, QIcon
-
-MA_PIN = "1000"
-GIO_HOM_NAY, PHUT_HOM_NAY = 17, 0
-GIO_NGAY_MAI, PHUT_NGAY_MAI = 9, 0
-FIREBASE_URL = "https://todo-1000-pro-default-rtdb.firebaseio.com/data.json"
-
-class FirebaseSyncWorker(QThread):
-    result_signal = pyqtSignal(dict)
-    
-    def __init__(self, action, payload=None):
-        super().__init__()
-        self.action = action 
-        self.payload = payload
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ToDo 1000 Pro</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#339af0">
+    <link rel="icon" href="logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="logo.png">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        :root { --primary: #339af0; --bg: #f4f6f8; --text: #333; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; user-select: none; -webkit-tap-highlight-color: transparent;}
+        * { box-sizing: border-box; }
         
-    def run(self):
-        try:
-            if self.action == 'upload':
-                req = urllib.request.Request(FIREBASE_URL, data=json.dumps(self.payload).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='PUT')
-                with urllib.request.urlopen(req, timeout=10):
-                    self.result_signal.emit({"status": "upload_success"})
-            elif self.action == 'download':
-                req = urllib.request.Request(FIREBASE_URL, method='GET')
-                with urllib.request.urlopen(req, timeout=10) as response:
-                    raw_data = response.read().decode('utf-8')
-                    data = json.loads(raw_data) if raw_data != "null" else {} 
-                    self.result_signal.emit({"status": "download_success", "data": data})
-        except Exception as e:
-            self.result_signal.emit({"status": "error", "message": str(e)})
-
-class LoginDialog(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Đăng nhập Hệ thống ToDo 1000")
-        self.setWindowIcon(QIcon("icon.ico")) 
-        self.setFixedSize(300, 150)
-        layout = QVBoxLayout(self)
-        lbl = QLabel("Vui lòng nhập mã PIN để truy cập:")
-        lbl.setAlignment(Qt.AlignCenter)
-        lbl.setStyleSheet("font-weight: bold; font-size: 14px;")
-        layout.addWidget(lbl)
-        self.pin_input = QLineEdit()
-        self.pin_input.setEchoMode(QLineEdit.Password)
-        self.pin_input.setPlaceholderText(f"Mã PIN (Ví dụ: {MA_PIN})")
-        self.pin_input.setStyleSheet("padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px;")
-        layout.addWidget(self.pin_input)
-        self.btn_login = QPushButton("Đăng nhập")
-        self.btn_login.setStyleSheet("background-color: #339af0; color: white; font-weight: bold; padding: 8px; border-radius: 4px;")
-        self.btn_login.clicked.connect(self.check_pin)
-        layout.addWidget(self.btn_login)
+        /* GIAO DIỆN ĐĂNG NHẬP */
+        #login-screen { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; background: white; padding: 20px; }
+        #pin-input { width: 100%; max-width: 300px; padding: 15px; font-size: 18px; border: 2px solid #ddd; border-radius: 8px; text-align: center; margin-bottom: 15px; }
+        #login-btn { width: 100%; max-width: 300px; padding: 15px; font-size: 16px; background: var(--primary); color: white; border: none; border-radius: 8px; font-weight: bold; }
         
-    def check_pin(self):
-        if self.pin_input.text() == MA_PIN: self.accept()
-        else: QMessageBox.warning(self, "Lỗi", "Sai mã PIN!"), self.pin_input.clear()
-
-class DateTimeDialog(QDialog):
-    def __init__(self, parent=None, current_datetime_str=""):
-        super().__init__(parent)
-        self.setWindowTitle("Chọn Ngày & Giờ Hẹn")
-        self.setFixedSize(300, 120)
-        layout = QVBoxLayout(self)
-        self.datetime_edit = QDateTimeEdit(self)
-        self.datetime_edit.setCalendarPopup(True)
-        self.datetime_edit.setDisplayFormat("dd/MM/yyyy HH:mm")
-        if current_datetime_str and current_datetime_str != "Chưa chọn (Đợi bật Lịch)":
-            dt = QDateTime.fromString(current_datetime_str, "dd/MM/yyyy HH:mm")
-            if dt.isValid(): self.datetime_edit.setDateTime(dt)
-            else: self.datetime_edit.setDateTime(QDateTime.currentDateTime())
-        else: self.datetime_edit.setDateTime(QDateTime.currentDateTime())
-        layout.addWidget(self.datetime_edit)
-        btn_layout = QHBoxLayout()
-        btn_ok = QPushButton("Xác nhận")
-        btn_cancel = QPushButton("Hủy")
-        btn_ok.setStyleSheet("background: #339af0; color: white; font-weight: bold; padding: 5px;")
-        btn_ok.clicked.connect(self.accept)
-        btn_cancel.clicked.connect(self.reject)
-        btn_layout.addWidget(btn_ok)
-        btn_layout.addWidget(btn_cancel)
-        layout.addLayout(btn_layout)
-
-    def get_time_string(self): return self.datetime_edit.dateTime().toString("dd/MM/yyyy HH:mm")
-
-class DragDropList(QListWidget):
-    def __init__(self, col_name):
-        super().__init__()
-        self.col_name = col_name
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-        self.setDragDropMode(QAbstractItemView.DragDrop)
-        self.setDefaultDropAction(Qt.MoveAction)
-        self.setStyleSheet("QListWidget { border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9; padding: 5px; } QListWidget::item { background: white; border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-bottom: 5px; } QListWidget::item:selected { background: #e7f5ff; border: 1px solid #339af0; color: black; }")
-
-class KanbanTab(QWidget):
-    def __init__(self):
-        super().__init__()
-        layout = QHBoxLayout(self)
-        layout.setSpacing(15)
-        self.todo_list = DragDropList("TO DO")
-        self.doing_list = DragDropList("DOING")
-        self.done_list = DragDropList("DONE")
-        def create_col(title, color, widget):
-            vbox = QVBoxLayout()
-            lbl = QLabel(title)
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(f"font-weight: bold; font-size: 14px; padding: 8px; border-radius: 5px; background-color: {color}; color: #333;")
-            vbox.addWidget(lbl)
-            vbox.addWidget(widget)
-            return vbox
-        layout.addLayout(create_col("TO DO", "#ffe8cc", self.todo_list))
-        layout.addLayout(create_col("DOING", "#d0ebff", self.doing_list))
-        layout.addLayout(create_col("DONE", "#d3f9d8", self.done_list))
-
-class ToDoApp(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("ToDo 1000 Pro - Auto Sync Siêu Tốc")
-        self.setWindowIcon(QIcon("icon.ico")) 
-        self.setGeometry(100, 100, 1050, 700)
+        /* GIAO DIỆN CHÍNH */
+        #app-screen { display: none; flex-direction: column; height: 100vh; }
+        header { background: white; padding: 10px 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .tab-select { padding: 8px; font-size: 16px; font-weight: bold; border-radius: 6px; border: 1px solid #ccc; flex-grow: 1; margin-right: 10px; }
+        .add-tab-btn { padding: 8px 12px; font-size: 20px; background: #e7f5ff; color: var(--primary); border: none; border-radius: 6px; font-weight: bold; }
         
-        self.last_known_dict = None
-        self.is_syncing = False
+        /* THANH NHẬP VIỆC MỚI & THỜI GIAN */
+        .input-bar { display: flex; flex-direction: column; padding: 10px 15px; background: white; border-bottom: 1px solid #eee; gap: 8px; }
+        .input-row { display: flex; gap: 8px; }
+        #new-task-input { flex-grow: 1; padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 6px; }
+        #new-time-input { flex-grow: 1; padding: 12px; font-size: 15px; border: 1px solid #ddd; border-radius: 6px; background: #f8f9fa; }
+        #add-task-btn { padding: 0 20px; font-size: 16px; background: var(--primary); color: white; border: none; border-radius: 6px; font-weight: bold; }
         
-        self.initUI()
-        self.load_local_data() 
-        self.last_known_dict = self.get_local_data_dict()
+        /* BẢNG KANBAN */
+        .board { display: flex; overflow-x: auto; flex-grow: 1; padding: 15px; gap: 15px; scroll-snap-type: x mandatory; }
+        .column { min-width: 88vw; background: white; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; scroll-snap-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .col-header { font-weight: bold; text-align: center; padding: 8px; border-radius: 6px; margin-bottom: 10px; font-size: 15px; }
+        .col-todo { background: #ffe8cc; color: #d9480f; }
+        .col-doing { background: #d0ebff; color: #1864ab; }
+        .col-done { background: #d3f9d8; color: #2b8a3e; }
         
-        self.alarm_timer = QTimer(self)
-        self.alarm_timer.timeout.connect(self.check_local_alarms)
-        self.alarm_timer.start(60000)
+        /* THẺ CÔNG VIỆC TỐI ƯU UX "THẢ RÈM" */
+        .task-list { flex-grow: 1; overflow-y: auto; padding-bottom: 20px;}
+        .task-card { background: white; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.03); overflow: hidden; transition: box-shadow 0.2s;}
+        .task-card.expanded { box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: var(--primary); }
         
-        self.sync_timer = QTimer(self)
-        self.sync_timer.timeout.connect(self.auto_sync_logic)
-        self.sync_timer.start(2000)
+        /* Phần nội dung có thể chạm (Tap to Reveal) */
+        .task-content { padding: 12px; cursor: pointer; }
+        .task-text { font-size: 15px; line-height: 1.4; margin-bottom: 4px; font-weight: 500; }
+        .task-time { color: #e03131; font-size: 13px; font-weight: bold; margin-bottom: 0; }
         
-    def initUI(self):
-        main_widget = QWidget()
-        self.setCentralWidget(main_widget)
-        main_layout = QVBoxLayout(main_widget)
-        header_layout = QVBoxLayout()
-        self.task_input = QLineEdit()
-        self.task_input.setPlaceholderText("Nhập công việc mới...")
-        self.task_input.setStyleSheet("padding: 12px; font-size: 14px; border: 1px solid #ccc; border-radius: 6px;")
-        header_layout.addWidget(self.task_input)
-        chips_layout = QHBoxLayout()
-        self.btn_today = QPushButton(f"🔥 Hôm nay ({GIO_HOM_NAY:02d}:{PHUT_HOM_NAY:02d})")
-        self.btn_tomorrow = QPushButton(f"🌤️ Ngày mai ({GIO_NGAY_MAI:02d}:{PHUT_NGAY_MAI:02d})")
-        self.btn_custom = QPushButton("📅 Chọn Lịch")
-        chip_style = "QPushButton { padding: 6px 12px; border-radius: 15px; background-color: #e7f5ff; color: #1971c2; font-weight: bold; border: 1px solid #d0ebff; cursor: pointer;}"
-        for btn in [self.btn_today, self.btn_tomorrow, self.btn_custom]:
-            btn.setStyleSheet(chip_style)
-            chips_layout.addWidget(btn)
-        chips_layout.addStretch()
-        
-        self.lbl_sync_status = QLabel("🟢 Sẵn sàng")
-        self.lbl_sync_status.setStyleSheet("padding: 8px 15px; font-weight: bold; background: #f8f9fa; color: #495057; border-radius: 5px; border: 1px solid #dee2e6;")
-        chips_layout.addWidget(self.lbl_sync_status)
-        
-        header_layout.addLayout(chips_layout)
-        main_layout.addLayout(header_layout)
-        self.tabs = QTabWidget()
-        self.tabs.setMovable(True) 
-        self.tabs.setStyleSheet("QTabBar::tab { padding: 10px 20px; font-weight: bold; font-size: 14px; min-height: 40px; min-width: 130px; border: 1px solid #ddd; border-bottom-color: transparent; border-top-left-radius: 6px; border-top-right-radius: 6px; background-color: #f1f3f5; } QTabBar::tab:selected { background-color: white; color: #1971c2; border-top: 4px solid #339af0; }")
-        self.tabs.tabBar().setContextMenuPolicy(Qt.CustomContextMenu)
-        self.tabs.tabBar().customContextMenuRequested.connect(self.tab_context_menu)
-        self.btn_add_tab = QPushButton("➕ Thêm Tab")
-        self.btn_add_tab.setStyleSheet("padding: 4px 10px; font-weight: bold; background: #e7f5ff; color: #1971c2; border-radius: 4px; margin: 2px;")
-        self.btn_add_tab.clicked.connect(self.prompt_add_tab)
-        self.tabs.setCornerWidget(self.btn_add_tab, Qt.TopRightCorner)
-        main_layout.addWidget(self.tabs)
-        self.btn_today.clicked.connect(lambda: self.add_task("today"))
-        self.btn_tomorrow.clicked.connect(lambda: self.add_task("tomorrow"))
-        self.btn_custom.clicked.connect(lambda: self.add_task("custom"))
-        self.task_input.returnPressed.connect(lambda: self.add_task("none"))
-        
-    def prompt_add_tab(self):
-        name, ok = QInputDialog.getText(self, "Thêm Tab", "Nhập tên Dự án mới:")
-        if ok and name.strip():
-            # BỘ LỌC KÝ TỰ CẤM CỦA FIREBASE
-            clean_name = name.replace('.', '').replace('#', '').replace('$', '').replace('[', '').replace(']', '').strip()
-            if clean_name: self.add_new_tab(clean_name)
-            else: QMessageBox.warning(self, "Lỗi", "Tên Tab không được chứa ký tự đặc biệt!")
+        /* HÀNG NÚT BẤM (ẨN BẰNG CSS TRANSITION) */
+        .task-actions { 
+            display: flex; justify-content: space-between; align-items: center; 
+            background: #f8f9fa; padding: 0 12px;
+            max-height: 0; opacity: 0; overflow: hidden;
+            transition: all 0.3s ease; border-top: 1px dashed transparent;
+        }
+        /* Khi thẻ có class 'expanded', rèm sẽ thả xuống */
+        .task-card.expanded .task-actions {
+            max-height: 60px; opacity: 1; padding: 10px 12px; border-top-color: #e9ecef;
+        }
 
-    def add_new_tab(self, name):
-        tab = KanbanTab()
-        self.tabs.addTab(tab, name)
-        for lst in [tab.todo_list, tab.doing_list, tab.done_list]:
-            lst.setContextMenuPolicy(Qt.CustomContextMenu)
-            lst.customContextMenuRequested.connect(self.task_context_menu)
+        .action-group { display: flex; gap: 10px; }
+        .icon-btn { background: white; border: 1px solid #dee2e6; border-radius: 6px; padding: 6px 12px; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);}
+        .icon-btn:active { background: #e9ecef; }
+        .btn-del { background: #fff5f5; border-color: #ffc9c9; }
+        
+        /* CÁC POPUP (MODAL) */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal-box { background: white; padding: 20px; border-radius: 12px; width: 85%; max-width: 320px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.15); animation: popIn 0.2s ease-out;}
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .modal-title { font-size: 17px; font-weight: bold; margin-bottom: 20px; }
+        .modal-buttons { display: flex; gap: 10px; }
+        .m-btn { flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: bold; font-size: 15px; }
+        .m-cancel { background: #f1f3f5; color: #495057; }
+        .m-delete { background: #fa5252; color: white; }
+        .m-save { background: var(--primary); color: white; }
+        .edit-input { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px;}
+    </style>
+</head>
+<body>
 
-    def add_task(self, deadline_type):
-        text = self.task_input.text().strip()
-        if not text: return
-        dl_str = ""
-        now = QDateTime.currentDateTime()
-        if deadline_type == "today": dl_str = QDateTime(now.date(), QTime(GIO_HOM_NAY, PHUT_HOM_NAY)).toString("dd/MM/yyyy HH:mm")
-        elif deadline_type == "tomorrow": dl_str = QDateTime(now.addDays(1).date(), QTime(GIO_NGAY_MAI, PHUT_NGAY_MAI)).toString("dd/MM/yyyy HH:mm")
-        elif deadline_type == "custom":
-            dialog = DateTimeDialog(self)
-            if dialog.exec_() == QDialog.Accepted: dl_str = dialog.get_time_string()
-            else: return 
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div id="login-screen">
+        <h2 style="color: #339af0;">ToDo 1000 Pro</h2>
+        <input type="password" id="pin-input" placeholder="Nhập mã PIN">
+        <button id="login-btn" onclick="checkPinManual()">VÀO HỆ THỐNG</button>
+    </div>
 
-        display = f"{text}\n⏰ {dl_str}" if dl_str else text
-        current_tab = self.tabs.currentWidget()
-        if current_tab:
-            item = QListWidgetItem(display)
-            item.setData(Qt.UserRole, {"id": str(uuid.uuid4())[:8], "text": text, "deadline": dl_str, "alarmed": False})
-            current_tab.todo_list.addItem(item)
-        self.task_input.clear()
+    <!-- MÀN HÌNH CHÍNH -->
+    <div id="app-screen">
+        <header>
+            <select id="tab-selector" class="tab-select" onchange="renderBoard()"></select>
+            <button class="add-tab-btn" onclick="addTab()">+</button>
+        </header>
+        
+        <div class="input-bar">
+            <input type="text" id="new-task-input" placeholder="Viết công việc...">
+            <div class="input-row">
+                <input type="datetime-local" id="new-time-input">
+                <button id="add-task-btn" onclick="addTask()">TẠO</button>
+            </div>
+        </div>
 
-    def check_local_alarms(self):
-        now = QDateTime.currentDateTime()
-        for i in range(self.tabs.count()):
-            tab_widget = self.tabs.widget(i)
-            for lw in [tab_widget.todo_list, tab_widget.doing_list]:
-                for j in range(lw.count()):
-                    item = lw.item(j)
-                    data = item.data(Qt.UserRole)
-                    if not isinstance(data, dict): continue
-                    dl_str = data.get("deadline", "")
-                    if not dl_str: continue
-                    if data.get("alarmed") == True: continue
-                    
-                    dt = QDateTime.fromString(dl_str, "dd/MM/yyyy HH:mm")
-                    if dt.isValid():
-                        mins = now.secsTo(dt) // 60
-                        if 0 <= mins <= 15:
-                            data["alarmed"] = True
-                            item.setData(Qt.UserRole, data)
-                            QApplication.beep() 
-                            msg = QMessageBox()
-                            msg.setWindowIcon(QIcon("icon.ico"))
-                            msg.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.Window)
-                            msg.setIcon(QMessageBox.Warning)
-                            msg.setWindowTitle("🚨 BÁO ĐỘNG TỪ TODO 1000")
-                            msg.setText(f"Tới giờ:\n\n📌 {data['text']}\n⏰ {dl_str}")
-                            msg.setStandardButtons(QMessageBox.Ok)
-                            msg.exec_() 
+        <div class="board">
+            <div class="column">
+                <div class="col-header col-todo">TO DO</div>
+                <div class="task-list" id="list-TODO"></div>
+            </div>
+            <div class="column">
+                <div class="col-header col-doing">DOING</div>
+                <div class="task-list" id="list-DOING"></div>
+            </div>
+            <div class="column">
+                <div class="col-header col-done">DONE</div>
+                <div class="task-list" id="list-DONE"></div>
+            </div>
+        </div>
+    </div>
 
-    def get_local_data_dict(self):
-        data = {}
-        for i in range(self.tabs.count()):
-            tab_widget = self.tabs.widget(i)
-            def get_items(lw): 
-                return [lw.item(j).data(Qt.UserRole) for j in range(lw.count()) if isinstance(lw.item(j).data(Qt.UserRole), dict)]
+    <!-- POPUP XÓA -->
+    <div class="modal-overlay" id="delete-modal">
+        <div class="modal-box">
+            <div class="modal-title">Bạn xóa công việc này chứ?</div>
+            <div class="modal-buttons">
+                <button class="m-btn m-cancel" onclick="closeModal('delete-modal')">Hủy</button>
+                <button class="m-btn m-delete" onclick="executeDelete()">Xóa luôn</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- POPUP SỬA -->
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal-box">
+            <div class="modal-title">Sửa công việc</div>
+            <input type="text" id="edit-task-text" class="edit-input" placeholder="Tên công việc">
+            <input type="datetime-local" id="edit-task-time" class="edit-input">
+            <div class="modal-buttons">
+                <button class="m-btn m-cancel" onclick="closeModal('edit-modal')">Hủy</button>
+                <button class="m-btn m-save" onclick="executeEdit()">Lưu lại</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MA_PIN = "1000";
+        const firebaseConfig = { databaseURL: "https://todo-1000-pro-default-rtdb.firebaseio.com" };
+        firebase.initializeApp(firebaseConfig);
+        const dbRef = firebase.database().ref('data');
+
+        let globalData = {};
+        let pendingDelete = null;
+        let pendingEdit = null;
+
+        // TỰ ĐỘNG ĐĂNG NHẬP KHI MỞ APP
+        window.onload = function() {
+            if (localStorage.getItem('todo_pin') === MA_PIN) {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app-screen').style.display = 'flex';
+                initFirebase();
+            }
+        };
+
+        function checkPinManual() {
+            if (document.getElementById('pin-input').value === MA_PIN) {
+                localStorage.setItem('todo_pin', MA_PIN);
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app-screen').style.display = 'flex';
+                initFirebase();
+            } else {
+                alert('Sai mã PIN!');
+            }
+        }
+
+        function initFirebase() {
+            dbRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    globalData = data;
+                    updateTabSelector();
+                    renderBoard();
+                } else {
+                    globalData = { "📌 Dự án chính": { "_empty": true } };
+                    dbRef.set(globalData);
+                }
+            });
+        }
+
+        function updateTabSelector() {
+            const selector = document.getElementById('tab-selector');
+            const currentTab = selector.value;
+            selector.innerHTML = '';
+            let tabs = Object.keys(globalData);
+            tabs.forEach(tab => {
+                let opt = document.createElement('option');
+                opt.value = tab;
+                opt.textContent = tab;
+                selector.appendChild(opt);
+            });
+            if (tabs.includes(currentTab)) selector.value = currentTab;
+        }
+
+        function formatToPC(datetimeLocalStr) {
+            if (!datetimeLocalStr) return "";
+            const d = new Date(datetimeLocalStr);
+            return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+        }
+
+        function formatToMobile(pcStr) {
+            if (!pcStr || pcStr.length < 15) return "";
+            try {
+                let parts = pcStr.split(" ");
+                let dParts = parts[0].split("/");
+                return `${dParts[2]}-${dParts[1]}-${dParts[0]}T${parts[1]}`;
+            } catch(e) { return ""; }
+        }
+
+        // HÀM MỚI: XỬ LÝ CLICK ĐỂ THẢ RÈM
+        function toggleCard(cardId) {
+            // Cuộn các thẻ khác lên
+            document.querySelectorAll('.task-card.expanded').forEach(card => {
+                if(card.id !== cardId) {
+                    card.classList.remove('expanded');
+                }
+            });
+            // Thả rèm thẻ được chọn
+            const currentCard = document.getElementById(cardId);
+            if(currentCard) {
+                currentCard.classList.toggle('expanded');
+            }
+        }
+
+        function renderBoard() {
+            const currentTab = document.getElementById('tab-selector').value;
+            if (!currentTab || !globalData[currentTab]) return;
+
+            const tabData = globalData[currentTab];
+            const cols = ['TO DO', 'DOING', 'DONE'];
             
-            td = get_items(tab_widget.todo_list)
-            di = get_items(tab_widget.doing_list)
-            dn = get_items(tab_widget.done_list)
-            
-            cols = {}
-            if td: cols["TO DO"] = td
-            if di: cols["DOING"] = di
-            if dn: cols["DONE"] = dn
-            
-            if cols: 
-                data[self.tabs.tabText(i)] = cols
-            else:
-                data[self.tabs.tabText(i)] = {"_empty": True} 
-        return data
-
-    def populate_ui_from_dict(self, data):
-        current_idx = self.tabs.currentIndex()
-        while self.tabs.count() > 0:
-            self.tabs.removeTab(0)
-            
-        if not data:
-            self.add_new_tab("📌 Dự án chính")
-        else:
-            for tab_name, cols in data.items():
-                self.add_new_tab(tab_name)
-                if cols.get("_empty"): continue 
+            cols.forEach(colName => {
+                const listEl = document.getElementById(`list-${colName.replace(' ', '')}`);
+                listEl.innerHTML = '';
+                const items = tabData[colName] || [];
                 
-                current_tab = self.tabs.widget(self.tabs.count() - 1)
-                def pop(lw, items):
-                    for d in items:
-                        if not isinstance(d, dict): continue
-                        display = f"{d['text']}\n⏰ {d['deadline']}" if d.get('deadline') else d['text']
-                        item = QListWidgetItem(display)
-                        item.setData(Qt.UserRole, d)
-                        lw.addItem(item)
-                pop(current_tab.todo_list, cols.get("TO DO", []))
-                pop(current_tab.doing_list, cols.get("DOING", []))
-                pop(current_tab.done_list, cols.get("DONE", []))
+                items.forEach((task, index) => {
+                    if (!task.text) return;
+                    
+                    const cardId = `card-${colName.replace(' ','')}-${index}`;
+                    const card = document.createElement('div');
+                    card.className = 'task-card';
+                    card.id = cardId;
+                    
+                    let moveBtns = '';
+                    if (colName === 'TO DO') {
+                        moveBtns = `<button class="icon-btn" onclick="moveTask('${colName}', 'DOING', ${index})">➡️</button>`;
+                    } else if (colName === 'DOING') {
+                        moveBtns = `
+                            <button class="icon-btn" onclick="moveTask('${colName}', 'TO DO', ${index})">⬅️</button>
+                            <button class="icon-btn" onclick="moveTask('${colName}', 'DONE', ${index})">➡️</button>
+                        `;
+                    } else {
+                        moveBtns = `<button class="icon-btn" onclick="moveTask('${colName}', 'DOING', ${index})">⬅️</button>`;
+                    }
+
+                    // Toàn bộ logic nội dung thẻ nằm trong phần <div class="task-content">
+                    card.innerHTML = `
+                        <div class="task-content" onclick="toggleCard('${cardId}')">
+                            <div class="task-text">${task.text}</div>
+                            ${task.deadline ? `<div class="task-time">⏰ ${task.deadline}</div>` : ''}
+                        </div>
+                        
+                        <div class="task-actions">
+                            <div class="action-group">
+                                <button class="icon-btn btn-del" onclick="confirmDelete('${colName}', ${index})">❌</button>
+                                <button class="icon-btn" onclick="openEdit('${colName}', ${index})">✏️</button>
+                            </div>
+                            <div class="action-group">
+                                ${moveBtns}
+                            </div>
+                        </div>
+                    `;
+                    listEl.appendChild(card);
+                });
+            });
+        }
+
+        function generateId() { return Math.random().toString(36).substring(2, 10); }
+
+        function addTask() {
+            const text = document.getElementById('new-task-input').value.trim();
+            const timeRaw = document.getElementById('new-time-input').value;
+            if (!text) return;
+
+            const timePC = formatToPC(timeRaw);
+            const currentTab = document.getElementById('tab-selector').value;
+            if (!globalData[currentTab]['TO DO']) globalData[currentTab]['TO DO'] = [];
             
-        if current_idx < self.tabs.count():
-            self.tabs.setCurrentIndex(current_idx)
+            if (globalData[currentTab]._empty) delete globalData[currentTab]._empty;
 
-    def auto_sync_logic(self):
-        if self.is_syncing: return
-        if QApplication.mouseButtons() != Qt.NoButton: return 
-        
-        current_dict = self.get_local_data_dict()
-        
-        if self.last_known_dict is None:
-            self.is_syncing = True
-            self.lbl_sync_status.setText("⏳ Đang tải...")
-            self.worker = FirebaseSyncWorker('download')
-            self.worker.result_signal.connect(self.handle_sync_result)
-            self.worker.start()
-            return
+            globalData[currentTab]['TO DO'].push({
+                id: generateId(),
+                text: text,
+                deadline: timePC,
+                alarmed: false
+            });
 
-        if current_dict != self.last_known_dict:
-            self.is_syncing = True
-            self.lbl_sync_status.setText("⬆️ Đang lưu ngầm...")
-            self.worker = FirebaseSyncWorker('upload', current_dict)
-            self.worker.result_signal.connect(self.handle_sync_result)
-            self.worker.start()
-        else:
-            self.is_syncing = True
-            self.worker = FirebaseSyncWorker('download')
-            self.worker.result_signal.connect(self.handle_sync_result)
-            self.worker.start()
+            document.getElementById('new-task-input').value = '';
+            document.getElementById('new-time-input').value = '';
+            dbRef.set(globalData); 
+        }
 
-    def handle_sync_result(self, res):
-        self.is_syncing = False
-        if res['status'] == 'upload_success':
-            self.last_known_dict = self.get_local_data_dict()
-            self.lbl_sync_status.setText("🟢 Đã lưu mây")
-        elif res['status'] == 'download_success':
-            cloud_dict = res.get('data') or {}
+        function moveTask(fromCol, toCol, index) {
+            const currentTab = document.getElementById('tab-selector').value;
+            const task = globalData[currentTab][fromCol][index];
             
-            if QApplication.mouseButtons() != Qt.NoButton: return 
-            if self.get_local_data_dict() != self.last_known_dict: return 
+            globalData[currentTab][fromCol].splice(index, 1);
+            if (globalData[currentTab][fromCol].length === 0) delete globalData[currentTab][fromCol];
             
-            if cloud_dict != self.last_known_dict:
-                self.populate_ui_from_dict(cloud_dict)
-                self.last_known_dict = self.get_local_data_dict() 
-            self.lbl_sync_status.setText("🟢 Đã đồng bộ")
-        else:
-            self.lbl_sync_status.setText("🔴 Đang chờ mạng...")
-
-    def save_local_data(self):
-        with open("local_tasks.json", "w", encoding="utf-8") as f: json.dump(self.get_local_data_dict(), f, ensure_ascii=False, indent=4)
+            if (!globalData[currentTab][toCol]) globalData[currentTab][toCol] = [];
+            globalData[currentTab][toCol].push(task);
             
-    def load_local_data(self):
-        if not os.path.exists("local_tasks.json"): return self.add_new_tab("📌 Dự án chính") 
-        try:
-            with open("local_tasks.json", "r", encoding="utf-8") as f: data = json.load(f)
-            if not data: return self.add_new_tab("📌 Dự án chính")
-            self.populate_ui_from_dict(data)
-        except: self.add_new_tab("📌 Dự án chính")
+            dbRef.set(globalData); 
+        }
 
-    def closeEvent(self, event): self.save_local_data(), event.accept()
-    
-    def tab_context_menu(self, pos):
-        index = self.tabs.tabBar().tabAt(pos)
-        menu = QMenu()
-        add_action = menu.addAction("➕ Thêm Tab mới")
-        rename_action = menu.addAction("✏️ Đổi tên")
-        delete_action = menu.addAction("❌ Xóa")
-        action = menu.exec_(self.tabs.tabBar().mapToGlobal(pos))
-        if not action: return 
-        if action == add_action: self.prompt_add_tab()
-        elif action == rename_action and index >= 0:
-            name, ok = QInputDialog.getText(self, "Đổi tên Tab", "Tên mới:", text=self.tabs.tabText(index))
-            if ok and name: 
-                # BỘ LỌC KÝ TỰ CẤM CỦA FIREBASE
-                clean_name = name.replace('.', '').replace('#', '').replace('$', '').replace('[', '').replace(']', '').strip()
-                if clean_name: self.tabs.setTabText(index, clean_name)
-                else: QMessageBox.warning(self, "Lỗi", "Tên Tab không hợp lệ!")
-        elif action == delete_action and index >= 0: 
-            if self.tabs.count() > 1: self.tabs.removeTab(index)
-            else: QMessageBox.warning(self, "Lỗi", "Không thể xóa Tab cuối cùng!")
+        function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
 
-    def task_context_menu(self, pos):
-        lw = self.sender(); item = lw.itemAt(pos)
-        if not item: return
-        menu = QMenu()
-        edit, date, _, delete = menu.addAction("✏️ Sửa tên"), menu.addAction("📅 Đổi ngày"), menu.addSeparator(), menu.addAction("❌ Xóa")
-        res = menu.exec_(lw.mapToGlobal(pos))
-        if not res: return 
+        function confirmDelete(colName, index) {
+            pendingDelete = { col: colName, idx: index };
+            document.getElementById('delete-modal').style.display = 'flex';
+        }
 
-        data = item.data(Qt.UserRole)
-        if not isinstance(data, dict):
-            raw_text = item.text().split("\n⏰")[0]
-            dl = item.text().split("\n⏰ ")[1] if "\n⏰ " in item.text() else ""
-            data = {"id": str(uuid.uuid4())[:8], "text": raw_text, "deadline": dl, "alarmed": False}
-            item.setData(Qt.UserRole, data)
+        function executeDelete() {
+            if (!pendingDelete) return;
+            const currentTab = document.getElementById('tab-selector').value;
+            globalData[currentTab][pendingDelete.col].splice(pendingDelete.idx, 1);
+            if (globalData[currentTab][pendingDelete.col].length === 0) delete globalData[currentTab][pendingDelete.col];
+            
+            if (Object.keys(globalData[currentTab]).length === 0) {
+                globalData[currentTab] = { "_empty": true };
+            }
+            dbRef.set(globalData);
+            closeModal('delete-modal');
+            pendingDelete = null;
+        }
 
-        if res == edit:
-            new_t, ok = QInputDialog.getText(self, "Sửa", "Tên:", text=data.get('text', ''))
-            if ok and new_t: 
-                data['text'] = new_t
-                item.setText(f"{new_t}\n⏰ {data.get('deadline')}" if data.get('deadline') else new_t)
-                item.setData(Qt.UserRole, data)
-        elif res == delete: lw.takeItem(lw.row(item))
-        elif res == date:
-            dlg = DateTimeDialog(self, data.get('deadline', ""))
-            if dlg.exec_() == QDialog.Accepted:
-                new_d = dlg.get_time_string(); 
-                data['deadline'] = new_d
-                data['alarmed'] = False 
-                data['id'] = str(uuid.uuid4())[:8] 
-                item.setText(f"{data.get('text')}\n⏰ {new_d}")
-                item.setData(Qt.UserRole, data)
+        function openEdit(colName, index) {
+            const currentTab = document.getElementById('tab-selector').value;
+            const task = globalData[currentTab][colName][index];
+            pendingEdit = { col: colName, idx: index };
+            
+            document.getElementById('edit-task-text').value = task.text;
+            document.getElementById('edit-task-time').value = formatToMobile(task.deadline);
+            document.getElementById('edit-modal').style.display = 'flex';
+        }
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    if LoginDialog().exec_() == QDialog.Accepted: ex = ToDoApp(); ex.show(); sys.exit(app.exec_())
-    else: sys.exit(0)
+        function executeEdit() {
+            if (!pendingEdit) return;
+            const currentTab = document.getElementById('tab-selector').value;
+            let task = globalData[currentTab][pendingEdit.col][pendingEdit.idx];
+            
+            const newText = document.getElementById('edit-task-text').value.trim();
+            const newTimeRaw = document.getElementById('edit-task-time').value;
+            
+            if (newText) task.text = newText;
+            
+            const newTimePC = formatToPC(newTimeRaw);
+            if (task.deadline !== newTimePC) {
+                task.deadline = newTimePC;
+                task.alarmed = false; 
+                task.id = generateId(); 
+            }
+            
+            dbRef.set(globalData);
+            closeModal('edit-modal');
+            pendingEdit = null;
+        }
+
+        function addTab() {
+            const tabName = prompt("Nhập tên Dự án mới:");
+            if (tabName && tabName.trim()) {
+                if (globalData[tabName]) { alert("Tên Tab đã tồn tại!"); return; }
+                globalData[tabName] = { "_empty": true }; 
+                dbRef.set(globalData).then(() => {
+                    document.getElementById('tab-selector').value = tabName;
+                    renderBoard();
+                });
+            }
+        }
+    </script>
+</body>
+</html>
